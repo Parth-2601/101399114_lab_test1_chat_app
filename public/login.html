@@ -142,29 +142,35 @@
 
     <script>
         document.getElementById('login-form').addEventListener('submit', async (e) => {
-            e.preventDefault();
+        e.preventDefault();
 
-            try {
-                const res = await fetch('/api/auth/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        username: document.getElementById('username').value,
-                        password: document.getElementById('password').value
-                    })
-                });
+    try {
+        const username = document.getElementById('username').value;
+        const password = document.getElementById('password').value;
 
-                const data = await res.json();
-                if (data.msg === "Login successful") {
-                    localStorage.setItem('username', data.username);
-                    window.location.href = "chat.html";
-                } else {
-                    alert(data.msg);
-                }
-            } catch (err) {
-                alert('An error occurred. Please try again later.');
-            }
+        console.log("Sending Login Request:", { username, password });
+
+        const res = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
         });
+
+        const data = await res.json();
+        console.log("Login Response:", data);  // Debugging line
+
+        if (data.success) {
+            localStorage.setItem('username', data.username);
+            window.location.href = "chat.html";
+        } else {
+            alert(data.msg);
+        }
+    } catch (err) {
+        console.error('Fetch error:', err);
+        alert('An error occurred. Please try again later.');
+    }
+});
+
     </script>
 </body>
 </html>

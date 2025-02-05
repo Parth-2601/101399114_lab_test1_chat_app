@@ -67,139 +67,133 @@
     <script>
         const socket = io();
         let username = localStorage.getItem("username");
-        let currentRoom = null;
+        let currentRoom = localStorage.getItem("currentRoom") || null;
         let typingTimeout;
-    
+
         if (!username) {
             window.location.href = "login.html";
         }
-    
-        function appendMessage(user, messageText, type = "message") {
-            const chatBox = document.getElementById('chat-box');
-            const message = document.createElement('div');
-            message.classList.add('message');
-    
-            if (type === "join") {
-                message.style.color = "#22c55e"; // Green for join messages
-                message.innerHTML = `<span class="username">${user}</span> joined the chat`;
-            } else if (type === "leave") {
-                message.style.color = "#ef4444"; // Red for leave messages
-                message.innerHTML = `<span class="username">${user}</span> left the chat`;
-            } else {
-                message.innerHTML = `<span class="username">${user}:</span> ${messageText}`;
+
+        document.addEventListener("DOMContentLoaded", () => {
+            if (currentRoom) {
+                document.getElementById('current-room').innerText = currentRoom;
+                socket.emit('joinRoom', { username, room: currentRoom });
+
+                // Restore messages from localStorage
+                const savedMessages = JSON.parse(localStorage.getItem(`messages_${currentRoom}`)) || [];
+                savedMessages.forEach(msg => appendMessage(msg.user, msg.text, msg.type));
             }
-    
-            chatBox.appendChild(message);
-            chatBox.scrollTop = chatBox.scrollHeight;
-    
-            removeTypingIndicator(); // Remove typing effect when a new message arrives
-        }
-    
-        function showTypingIndicator(username) {
-            removeTypingIndicator(); // Remove existing typing indicator
-    
-            const chatBox = document.getElementById('chat-box');
-            const typingIndicator = document.createElement('p');
-            typingIndicator.id = "typing-status";
-            typingIndicator.classList.add('typing-indicator');
-            typingIndicator.innerText = `${username} is typing...`;
-    
-            chatBox.appendChild(typingIndicator);
-            chatBox.scrollTop = chatBox.scrollHeight;
-        }
-    
-        function removeTypingIndicator() {
-            const typingIndicator = document.getElementById('typing-status');
-            if (typingIndicator) {
-                typingIndicator.remove();
-            }
-        }
-    
+        });
+
+        // Join Room (Ensuring they leave the current one first)
         document.getElementById('join-room').addEventListener('click', () => {
             const room = document.getElementById('room').value;
-    
-            if (currentRoom) {
-                socket.emit('leaveRoom', { username, room: currentRoom });
+
+            // Prevent switching rooms without leaving first
+            if (currentRoom && currentRoom !== room) {
+                alert("You must leave the current room before joining a new one.");
+                return;
             }
-    
-            socket.emit('joinRoom', { username, room });
-    
-            document.getElementById('current-room').innerText = room;
-            currentRoom = room;
-            document.getElementById('chat-box').innerHTML = "";
-    
-            socket.emit('userJoined', { username, room });
+
+            if (!currentRoom) {
+                socket.emit('joinRoom', { username, room });
+
+                document.getElementById('current-room').innerText = room;
+                currentRoom = room;
+                localStorage.setItem("currentRoom", room); // Save room to localStorage
+                localStorage.setItem(`messages_${room}`, JSON.stringify([])); // Reset messages for the new room
+
+                // Clear chat box when joining a new room
+                clearChatBox();
+            }
         });
-    
+
+        // Leave Room
         document.getElementById('leave-room').addEventListener('click', () => {
             if (currentRoom) {
-                socket.emit('leaveRoom', { username, room: currentRoom });
-    
+                socket.emit('leaveRoom'); // Notify the server the user is leaving
+
                 appendMessage(username, `left the chat`, "leave");
-    
                 document.getElementById('current-room').innerText = "None";
+
+                // Remove current room from storage and reset state
+                localStorage.removeItem("currentRoom");
+                localStorage.removeItem(`messages_${currentRoom}`);
                 currentRoom = null;
+                
+                // Clear chat box when leaving the room
+                clearChatBox();
+            } else {
+                alert("You are not in any room.");
             }
         });
-    
-        document.getElementById('send-btn').addEventListener('click', () => {
-            sendMessage();
-        });
-    
+
+        // Function to Clear Chat Box
+        function clearChatBox() {
+            document.getElementById('chat-box').innerHTML = "";
+        }
+
+        // Send Message
+        document.getElementById('send-btn').addEventListener('click', sendMessage);
         document.getElementById('message-input').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') sendMessage();
         });
-    
-        document.getElementById('message-input').addEventListener('input', () => {
-            if (currentRoom) {
-                socket.emit('typing', { username, room: currentRoom });
-    
-                clearTimeout(typingTimeout);
-                typingTimeout = setTimeout(() => {
-                    socket.emit('stopTyping', { username, room: currentRoom });
-                    removeTypingIndicator();
-                }, 2000);
-            }
-        });
-    
-        document.getElementById('message-input').addEventListener('blur', () => {
-            socket.emit('stopTyping', { username, room: currentRoom });
-            removeTypingIndicator();
-        });
-    
+
         function sendMessage() {
             const message = document.getElementById('message-input').value;
             if (message && currentRoom) {
                 socket.emit('chatMessage', { username, room: currentRoom, message });
                 document.getElementById('message-input').value = "";
-    
                 socket.emit('stopTyping', { username, room: currentRoom });
                 removeTypingIndicator();
             }
         }
-    
+
+        // Listen for messages
         socket.on('message', (data) => {
             appendMessage(data.user, data.text, data.type);
         });
-    
-        socket.on('userJoined', (data) => {
-            appendMessage(data.username, `joined the chat`, "join");
-        });
-    
+
         socket.on('typing', (data) => {
-            if (data.username !== username) {
-                showTypingIndicator(data.username);
+            if (data.username !== username) showTypingIndicator(data.username);
+        });
+
+        socket.on('stopTyping', removeTypingIndicator);
+
+        // Function to Append Message to Chat Box and Save in Local Storage
+        function appendMessage(user, messageText, type = "message") {
+            const chatBox = document.getElementById('chat-box');
+            const message = document.createElement('div');
+            message.classList.add('message');
+
+            if (type === "join") {
+                message.style.color = "#22c55e"; 
+                message.innerHTML = `<span class="username">${user}</span> joined the chat`;
+            } else if (type === "leave") {
+                message.style.color = "#ef4444";
+                message.innerHTML = `<span class="username">${user}</span> left the chat`;
+            } else {
+                message.innerHTML = `<span class="username">${user}:</span> ${messageText}`;
             }
-        });
-    
-        socket.on('stopTyping', () => {
-            removeTypingIndicator();
-        });
-    
+
+            chatBox.appendChild(message);
+            chatBox.scrollTop = chatBox.scrollHeight;
+
+            // Save messages to localStorage
+            if (currentRoom) {
+                const messages = JSON.parse(localStorage.getItem(`messages_${currentRoom}`)) || [];
+                messages.push({ user, text: messageText, type });
+                localStorage.setItem(`messages_${currentRoom}`, JSON.stringify(messages));
+            }
+        }
+
+        // Logout
         document.getElementById('logout-btn').addEventListener('click', () => {
             localStorage.removeItem("username");
+            localStorage.removeItem("currentRoom");
             window.location.href = "login.html";
         });
+
     </script>
     
 </body>
