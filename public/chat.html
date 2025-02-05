@@ -189,10 +189,18 @@
 
         // Logout
         document.getElementById('logout-btn').addEventListener('click', () => {
-            localStorage.removeItem("username");
-            localStorage.removeItem("currentRoom");
-            window.location.href = "login.html";
-        });
+        if (currentRoom) {
+            socket.emit('leaveRoom'); 
+            localStorage.removeItem(`messages_${currentRoom}`);
+        }
+
+        socket.disconnect(); 
+
+        // Clear local storage and redirect
+        localStorage.removeItem("username");
+        localStorage.removeItem("currentRoom");
+        window.location.href = "login.html";
+    });
 
     </script>
     
