@@ -7,7 +7,7 @@ const dotenv = require('dotenv');
 
 // Import models
 const authRoutes = require('./routes/auth');
-const GroupMessage = require('./models/GroupMessage'); // Import GroupMessage model
+const GroupMessage = require('./models/GroupMessage');
 
 dotenv.config();
 const app = express();
@@ -23,13 +23,11 @@ app.use(express.static('public'));
 mongoose.connect(process.env.MONGO_URI, {
     useNewUrlParser: true,
     useUnifiedTopology: true
-}).then(() => console.log('MongoDB Connected'))
-  .catch(err => console.log(err));
+}).then(() => console.log('✅ MongoDB Connected'))
+  .catch(err => console.log('❌ MongoDB Connection Error:', err));
 
-const rooms = ["devops", "cloud computing", "covid19", "sports", "nodeJS"];
-
-// Object to track users typing in rooms
-const usersTyping = {};
+  const rooms = ["devops", "cloud computing", "covid19", "sports", "nodeJS"];
+  const usersTyping = {};
 
 io.on('connection', (socket) => {
     console.log('New user connected');
@@ -59,38 +57,32 @@ io.on('connection', (socket) => {
     });
 
     // User sends a message
-    socket.on('chatMessage', ({ username, room, message }) => {
+    socket.on('chatMessage', async ({ username, room, message }) => {
         if (!socket.room || socket.room !== room) return;
 
-        // Store the message in MongoDB (GroupMessage model)
-        const newMessage = new GroupMessage({
-            from_user: username,
-            room: room,
-            message: message
-        });
+        try {
+            const newMessage = new GroupMessage({ from_user: username, room, message });
+            await newMessage.save();
 
-        newMessage.save()
-            .then(() => {
-                io.to(room).emit('message', { user: username, text: message, type: "message" });
-                stopTyping(username, room);
-            })
-            .catch(err => console.error('Error saving message:', err));
+            // Send message to all clients in the room
+            io.to(room).emit('message', { user: username, text: message, type: "message" });
+
+            // Stop typing indicator
+            stopTyping(username, room);
+        } catch (err) {
+            console.error('❌ Error saving message:', err);
+        }
     });
-
     // User starts typing
     socket.on('typing', ({ username, room }) => {
         if (!socket.room) return;
-    
-        if (!usersTyping[room]) {
-            usersTyping[room] = new Set();
-        }
+
+        if (!usersTyping[room]) usersTyping[room] = new Set();
         usersTyping[room].add(username);
-        
+
         io.to(room).emit('typing', { users: Array.from(usersTyping[room]) });
     });
-    
 
-    // User stops typing
     socket.on('stopTyping', ({ username, room }) => {
         stopTyping(username, room);
     });
@@ -112,7 +104,7 @@ io.on('connection', (socket) => {
             io.to(socket.room).emit('message', { user: socket.username, text: `${socket.username} disconnected`, type: "leave" });
             stopTyping(socket.username, socket.room);
         }
-        console.log('User disconnected');
+        console.log('❌ User disconnected');
     });
 });
 

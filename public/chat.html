@@ -75,11 +75,14 @@
         }
 
         document.addEventListener("DOMContentLoaded", () => {
-            if (currentRoom) {
-                document.getElementById('current-room').innerText = currentRoom;
-                socket.emit('joinRoom', { username, room: currentRoom });
-            }
-        });
+        if (currentRoom) {
+            document.getElementById('current-room').innerText = currentRoom;
+            socket.emit('joinRoom', { username, room: currentRoom });
+
+            // Load messages from LocalStorage
+            loadChatHistory(currentRoom);
+        }
+    });
 
         // Join Room
         document.getElementById('join-room').addEventListener('click', () => {
@@ -100,13 +103,14 @@
 
         // Leave Room
         document.getElementById('leave-room').addEventListener('click', () => {
-            if (currentRoom) {
-                socket.emit('leaveRoom');
-                document.getElementById('current-room').innerText = "None";
-                localStorage.removeItem("currentRoom");
-                currentRoom = null;
-                clearChatBox();
-            }
+                if (currentRoom) {
+            socket.emit('leaveRoom');
+            document.getElementById('current-room').innerText = "None";
+            localStorage.removeItem(`chat_${currentRoom}`);
+            localStorage.removeItem("currentRoom");
+            currentRoom = null;
+            clearChatBox();
+        }
         });
 
         function clearChatBox() {
@@ -130,18 +134,34 @@
 
         // Listen for messages
         socket.on('message', (data) => {
-            appendMessage(data.user, data.text);
-        });
+                if (data.type !== "join" && data.type !== "leave") {
+                    saveMessageToLocal(currentRoom, data.user, data.text);
+                }
+                appendMessage(data.user, data.text);
+            });
 
-        // Append messages to chat box
-        function appendMessage(user, messageText) {
-            const chatBox = document.getElementById('chat-box');
-            const message = document.createElement('div');
-            message.classList.add('message');
-            message.innerHTML = `<span class="username">${user}:</span> ${messageText}`;
-            chatBox.appendChild(message);
-            chatBox.scrollTop = chatBox.scrollHeight;
-        }
+            // Store messages locally
+            function saveMessageToLocal(room, user, messageText) {
+                let chatHistory = JSON.parse(localStorage.getItem(`chat_${room}`)) || [];
+                chatHistory.push({ user, messageText });
+                localStorage.setItem(`chat_${room}`, JSON.stringify(chatHistory));
+            }
+
+            // Load messages from LocalStorage
+            function loadChatHistory(room) {
+                let chatHistory = JSON.parse(localStorage.getItem(`chat_${room}`)) || [];
+                chatHistory.forEach(msg => appendMessage(msg.user, msg.messageText));
+            }
+
+            // Append messages to chat box
+            function appendMessage(user, messageText) {
+                const chatBox = document.getElementById('chat-box');
+                const message = document.createElement('div');
+                message.classList.add('message');
+                message.innerHTML = `<span class="username">${user}:</span> ${messageText}`;
+                chatBox.appendChild(message);
+                chatBox.scrollTop = chatBox.scrollHeight;
+            }
 
         // **Typing Indicator Logic**
         document.getElementById('message-input').addEventListener('input', () => {
@@ -153,7 +173,6 @@
             }, 1000); // Stop typing indicator after 1 second of inactivity
         });
 
-        // Listen for typing event
         // Listen for typing event
         socket.on('typing', (data) => {
             if (data.users.length > 0) {
