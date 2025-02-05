@@ -28,6 +28,9 @@ mongoose.connect(process.env.MONGO_URI, {
 
 const rooms = ["devops", "cloud computing", "covid19", "sports", "nodeJS"];
 
+// Object to track users typing in rooms
+const usersTyping = {};
+
 io.on('connection', (socket) => {
     console.log('New user connected');
 
@@ -69,29 +72,45 @@ io.on('connection', (socket) => {
         newMessage.save()
             .then(() => {
                 io.to(room).emit('message', { user: username, text: message, type: "message" });
-                socket.to(room).emit('stopTyping', { username });
+                stopTyping(username, room);
             })
             .catch(err => console.error('Error saving message:', err));
     });
 
     // User starts typing
     socket.on('typing', ({ username, room }) => {
-        if (socket.room) {
-            socket.to(room).emit('typing', { username });
+        if (!socket.room) return;
+    
+        if (!usersTyping[room]) {
+            usersTyping[room] = new Set();
         }
+        usersTyping[room].add(username);
+        
+        io.to(room).emit('typing', { users: Array.from(usersTyping[room]) });
     });
+    
 
     // User stops typing
     socket.on('stopTyping', ({ username, room }) => {
-        if (socket.room) {
-            socket.to(room).emit('stopTyping', { username });
-        }
+        stopTyping(username, room);
     });
+
+    function stopTyping(username, room) {
+        if (!usersTyping[room]) return;
+
+        usersTyping[room].delete(username);
+        if (usersTyping[room].size === 0) {
+            io.to(room).emit('stopTyping');
+        } else {
+            io.to(room).emit('typing', { users: Array.from(usersTyping[room]) });
+        }
+    }
 
     // User disconnects
     socket.on('disconnect', () => {
         if (socket.room) {
             io.to(socket.room).emit('message', { user: socket.username, text: `${socket.username} disconnected`, type: "leave" });
+            stopTyping(socket.username, socket.room);
         }
         console.log('User disconnected');
     });

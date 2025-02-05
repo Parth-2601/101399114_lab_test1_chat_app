@@ -68,6 +68,7 @@
         const socket = io();
         let username = localStorage.getItem("username");
         let currentRoom = localStorage.getItem("currentRoom") || null;
+        let typingTimeout;
 
         if (!username) {
             window.location.href = "login.html";
@@ -80,6 +81,7 @@
             }
         });
 
+        // Join Room
         document.getElementById('join-room').addEventListener('click', () => {
             const room = document.getElementById('room').value;
 
@@ -96,6 +98,7 @@
             }
         });
 
+        // Leave Room
         document.getElementById('leave-room').addEventListener('click', () => {
             if (currentRoom) {
                 socket.emit('leaveRoom');
@@ -110,6 +113,7 @@
             document.getElementById('chat-box').innerHTML = "";
         }
 
+        // Send Message
         document.getElementById('send-btn').addEventListener('click', sendMessage);
         document.getElementById('message-input').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') sendMessage();
@@ -124,10 +128,12 @@
             }
         }
 
+        // Listen for messages
         socket.on('message', (data) => {
             appendMessage(data.user, data.text);
         });
 
+        // Append messages to chat box
         function appendMessage(user, messageText) {
             const chatBox = document.getElementById('chat-box');
             const message = document.createElement('div');
@@ -137,11 +143,64 @@
             chatBox.scrollTop = chatBox.scrollHeight;
         }
 
+        // **Typing Indicator Logic**
+        document.getElementById('message-input').addEventListener('input', () => {
+            socket.emit('typing', { username, room: currentRoom });
+            
+            clearTimeout(typingTimeout);
+            typingTimeout = setTimeout(() => {
+                socket.emit('stopTyping', { room: currentRoom });
+            }, 1000); // Stop typing indicator after 1 second of inactivity
+        });
+
+        // Listen for typing event
+        // Listen for typing event
+        socket.on('typing', (data) => {
+            if (data.users.length > 0) {
+                showTypingIndicator(data.users);
+            } else {
+                removeTypingIndicator();
+            }
+        });
+
+        // Show typing indicator
+        function showTypingIndicator(users) {
+            removeTypingIndicator();
+            const chatBox = document.getElementById('chat-box');
+            const typingIndicator = document.createElement('div');
+            typingIndicator.classList.add('typing-indicator');
+            
+            let userText = users.length === 1 
+                ? `${users[0]} is typing...` 
+                : `${users.join(", ")} are typing...`;
+
+            typingIndicator.innerText = userText;
+            chatBox.appendChild(typingIndicator);
+        }
+
+        // Listen for stopTyping event
+        socket.on('stopTyping', () => {
+            removeTypingIndicator();
+        });
+
+
+        // Show typing indicator
+        function showTypingIndicator(user) {
+            removeTypingIndicator();
+            const chatBox = document.getElementById('chat-box');
+            const typingIndicator = document.createElement('div');
+            typingIndicator.classList.add('typing-indicator');
+            typingIndicator.innerText = `${user} is typing...`;
+            chatBox.appendChild(typingIndicator);
+        }
+
+        // Remove typing indicator
         function removeTypingIndicator() {
             const typingIndicator = document.querySelector(".typing-indicator");
             if (typingIndicator) typingIndicator.remove();
         }
 
+        // Logout
         document.getElementById('logout-btn').addEventListener('click', () => {
             socket.disconnect();
             localStorage.clear();
@@ -149,6 +208,7 @@
                 window.location.href = "login.html";
             }, 500);
         });
+
     </script>
 </body>
 </html>
